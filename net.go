@@ -234,7 +234,7 @@ func (m *Memberlist) handleConn(conn net.Conn) {
 
 	switch msgType {
 	case userMsg:
-		if err := m.readUserMsg(bufConn, dec); err != nil {
+		if err := m.readAndRespondUserMsg(bufConn, dec, conn); err != nil {
 			m.logger.Printf("[ERR] memberlist: Failed to receive user message: %s %s", err, LogConn(conn))
 		}
 	case pushPullMsg:
@@ -547,7 +547,7 @@ func (m *Memberlist) handleDead(buf []byte, from net.Addr) {
 func (m *Memberlist) handleUser(buf []byte, from net.Addr) {
 	d := m.config.Delegate
 	if d != nil {
-		d.NotifyMsg(buf)
+		d.NotifyMsg(buf, nil)
 	}
 }
 
@@ -698,28 +698,27 @@ func (m *Memberlist) rawSendMsgStream(conn net.Conn, sendBuf []byte) error {
 }
 
 // sendUserMsg is used to stream a user message to another host.
-func (m *Memberlist) sendUserMsg(addr string, sendBuf []byte) error {
+func (m *Memberlist) sendUserMsg(addr string, sendBuf []byte) (io.ReadCloser, error) {
 	conn, err := m.transport.DialTimeout(addr, m.config.TCPTimeout)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer conn.Close()
 
 	bufConn := bytes.NewBuffer(nil)
 	if err := bufConn.WriteByte(byte(userMsg)); err != nil {
-		return err
+		return nil, err
 	}
 
 	header := userMsgHeader{UserMsgLen: len(sendBuf)}
 	hd := codec.MsgpackHandle{}
 	enc := codec.NewEncoder(bufConn, &hd)
 	if err := enc.Encode(&header); err != nil {
-		return err
+		return nil, err
 	}
 	if _, err := bufConn.Write(sendBuf); err != nil {
-		return err
+		return nil, err
 	}
-	return m.rawSendMsgStream(conn, bufConn.Bytes())
+	return conn, m.rawSendMsgStream(conn, bufConn.Bytes())
 }
 
 // sendAndReceiveState is used to initiate a push/pull over a stream with a
@@ -1023,8 +1022,10 @@ func (m *Memberlist) mergeRemoteState(join bool, remoteNodes []pushNodeState, us
 	return nil
 }
 
-// readUserMsg is used to decode a userMsg from a stream.
-func (m *Memberlist) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
+// readAndRespondUserMsg is used to decode a userMsg from a stream.
+func (m *Memberlist) readAndRespondUserMsg(bufConn io.Reader, dec *codec.Decoder, conn net.Conn) error {
+	conn.SetDeadline(time.Now().Add(m.config.TCPTimeout))
+
 	// Read the user message header
 	var header userMsgHeader
 	if err := dec.Decode(&header); err != nil {
@@ -1047,7 +1048,7 @@ func (m *Memberlist) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
 
 		d := m.config.Delegate
 		if d != nil {
-			d.NotifyMsg(userBuf)
+			d.NotifyMsg(userBuf, conn)
 		}
 	}
 

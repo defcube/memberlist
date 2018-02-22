@@ -28,6 +28,7 @@ import (
 	multierror "github.com/hashicorp/go-multierror"
 	sockaddr "github.com/hashicorp/go-sockaddr"
 	"github.com/miekg/dns"
+	"io"
 )
 
 type Memberlist struct {
@@ -482,7 +483,8 @@ func (m *Memberlist) SendToUDP(to *Node, msg []byte) error {
 
 // SendToTCP is deprecated in favor of SendReliable.
 func (m *Memberlist) SendToTCP(to *Node, msg []byte) error {
-	return m.SendReliable(to, msg)
+	 _, err := m.SendReliable(to, msg)
+	 return err
 }
 
 // SendBestEffort uses the unreliable packet-oriented interface of the transport
@@ -503,7 +505,8 @@ func (m *Memberlist) SendBestEffort(to *Node, msg []byte) error {
 // target a user message at the given node (this does not use the gossip
 // mechanism). Delivery is guaranteed if no error is returned, and there is no
 // limit on the size of the message.
-func (m *Memberlist) SendReliable(to *Node, msg []byte) error {
+// Caller must call close on the returned ReadCloser
+func (m *Memberlist) SendReliable(to *Node, msg []byte) (io.ReadCloser, error) {
 	return m.sendUserMsg(to.Address(), msg)
 }
 

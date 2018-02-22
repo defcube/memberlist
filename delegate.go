@@ -1,5 +1,7 @@
 package memberlist
 
+import "io"
+
 // Delegate is the interface that clients must implement if they want to hook
 // into the gossip layer of Memberlist. All the methods must be thread-safe,
 // as they can and generally will be called concurrently.
@@ -13,7 +15,7 @@ type Delegate interface {
 	// Care should be taken that this method does not block, since doing
 	// so would block the entire UDP packet receive loop. Additionally, the byte
 	// slice may be modified after the call returns, so it should be copied if needed
-	NotifyMsg([]byte)
+	NotifyMsg(msg []byte, response io.Writer)
 
 	// GetBroadcasts is called when user data messages can be broadcast.
 	// It can return a list of buffers to send. Each buffer should assume an
